@@ -191,6 +191,7 @@ def export_washed(washed, smiles_file, duplicates_file):
                     smif.write("{}\n".format(smi))
                 if len(ids) > 1:
                     dupf.write(" ".join(ids))
+                    dupf.write("\n")
 
 
 if __name__ == "__main__":
