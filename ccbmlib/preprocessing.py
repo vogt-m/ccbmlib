@@ -197,7 +197,9 @@ def export_washed(washed, smiles_file, duplicates_file):
 if __name__ == "__main__":
     import sys
     import os
-    logger.setLevel(logging.INFO)
+    logging.basicConfig()
+    root_logger=logging.getLogger()
+    root_logger.setLevel(logging.INFO)
     if len(sys.argv) != 4:
         print("Usage: python {} smiles-input-file washed-smiles-output-file duplicates-text-output-file".format(sys.argv[0]))
         sys.exit(1)

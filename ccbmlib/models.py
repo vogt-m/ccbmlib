@@ -291,7 +291,7 @@ logger.debug("_fp_dictionary: {}".format(pp.pformat(_fp_dictionary)))
 if __name__ == "__main__":
     logging.basicConfig()
     root_logger=logging.getLogger()
-    root_logger.setLevel(logging.DEBUG)
+    root_logger.setLevel(logging.INFO)
 
     import sys
     if len(sys.argv)!=4:
