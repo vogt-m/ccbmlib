@@ -149,7 +149,7 @@ class PairwiseStats:
         """
         :param m: MarginalStats
         :param ca: covariance array
-        :param rare_frequency: frequenc of rare features
+        :param rare_frequency: frequency of rare features
         :param limit: feature index limit for covariance information
         """
         self.marginal: MarginalStats = m
