@@ -1,4 +1,4 @@
-## ccbmlib 1.0 - Conditional correlated Bernoulli Models for Tanimoto coefficient distributions
+## ccbmlib 1.0 - Conditional Correlated Bernoulli Models for Tanimoto Coefficient Distributions
 
 #### Synopsis
 A package to model Tc value distributions for different fingerprints in RDKit.
