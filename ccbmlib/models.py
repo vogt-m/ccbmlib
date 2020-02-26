@@ -33,6 +33,9 @@ from rdkit.Chem.rdMolDescriptors import GetHashedAtomPairFingerprint
 from rdkit.Chem.rdMolDescriptors import GetHashedTopologicalTorsionFingerprint
 from rdkit.Chem.rdMolDescriptors import GetHashedMorganFingerprint
 from rdkit.Avalon.pyAvalonTools import GetAvalonFP
+from rdkit.Chem import RDKFingerprint
+
+from rdkit.DataStructs.cDataStructs import ExplicitBitVect, UIntSparseIntVect, IntSparseIntVect, LongSparseIntVect
 
 from ccbmlib.statistics import PairwiseStats
 
@@ -43,7 +46,7 @@ from ccbmlib.statistics import PairwiseStats
 # All fingerprints are returned as lists of features
 
 def rdkit_fingerprint(mol, **kwargs):
-    return list(Chem.RDKFingerprint(mol, **kwargs).GetOnBits())
+    return list(RDKFingerprint(mol, **kwargs).GetOnBits())
 
 
 def maccs_keys(mol, **kwargs):
@@ -78,14 +81,15 @@ def avalon(mol, **kwargs):
     return list(GetAvalonFP(mol, **kwargs).GetOnBits())
 
 
-def tc(fp_a,fp_b):
-    a=len(fp_a)
-    b=len(fp_b)
-    c=len(set(fp_a).intersection(fp_b))
+def tc(fp_a, fp_b):
+    a = len(fp_a)
+    b = len(fp_b)
+    c = len(set(fp_a).intersection(fp_b))
     if c != 0:
-        return c/(a+b-c)
+        return c / (a + b - c)
     else:
         return 0
+
 
 def generate_fingerprints(mol_suppl, fp, pars):
     for mol in mol_suppl:
@@ -155,7 +159,7 @@ def to_key_val_string(pars):
     return " ".join("{}:{}".format(k, v) for k, v in sorted(pars.items()))
 
 
-def get_fingerprints(db_name, fp_name, pars, get_mol_suppl= None):
+def get_fingerprints(db_name, fp_name, pars, get_mol_suppl=None):
     if not _initialized:
         raise Exception("Data folder not set. Use 'set_data_folder(path)'.")
     logger.info("get_fingerprints: db:{} fp_name:{}".format(db_name, fp_name))
@@ -173,7 +177,7 @@ def get_fingerprints(db_name, fp_name, pars, get_mol_suppl= None):
         with auto_open(get_full_filename(fp_filename), "wt") as of:
             print("#    database: {}".format(db_name), file=of)
             print("# fingerprint: {}".format(fp_name), file=of)
-            print("# parameters: {}".format(to_key_val_string(pars)), file=of)
+            print("#  parameters: {}".format(to_key_val_string(pars)), file=of)
             print("# Name    Fingerprint", file=of)
             fp_fct = fingerprints[fp_name]
             count = 0
@@ -208,6 +212,7 @@ def cb_mol_suppl_from_file(filename, smilesColumn=0, nameColumn=1, titleLine=Fal
 
 def cb_fp_iterator_from_file(filename):
     def generator():
+
         with auto_open(filename) as inf:
             for line in inf:
                 if line.startswith("#"):
@@ -259,11 +264,12 @@ def set_data_folder(path):
     _fp_dictionary = {}
     if os.path.exists(_fp_dictionary_pickle):
         with open(_fp_dictionary_pickle, "rb") as pf:
-            _fp_dictionary = pickle\
+            _fp_dictionary = pickle \
                 .load(pf)
     else:
         pickle_fp_dictionary()
     _initialized = True
+
 
 fingerprints = {"rdkit": rdkit_fingerprint,
                 "maccs": maccs_keys,
@@ -276,6 +282,32 @@ fingerprints = {"rdkit": rdkit_fingerprint,
                 "avalon": avalon,
                 }
 
+
+def _maccs_keys_wrapper(mol, **kwargs):
+    return GetMACCSKeysFingerprint(mol)
+
+
+fingerprints_future = {"rdkit": RDKFingerprint,
+                       "maccs": _maccs_keys_wrapper,
+                       "atom_pairs": GetAtomPairFingerprint,
+                       "torsions": GetTopologicalTorsionFingerprint,
+                       "morgan": GetMorganFingerprint,
+                       "hashed_atom_pairs": GetHashedAtomPairFingerprint,
+                       "hashed_torsions": GetHashedTopologicalTorsionFingerprint,
+                       "hashed_morgan": GetHashedMorganFingerprint,
+                       "avalon": GetAvalonFP,
+                       }
+
+fingerprint_type = {"rdkit": ExplicitBitVect,
+                    "maccs": ExplicitBitVect,
+                    "atom_pairs": IntSparseIntVect,
+                    "torsions": LongSparseIntVect,
+                    "morgan": UIntSparseIntVect,
+                    "hashed_atom_pairs": IntSparseIntVect,
+                    "hashed_torsions": LongSparseIntVect,
+                    "hashed_morgan": UIntSparseIntVect,
+                    "avalon": ExplicitBitVect,
+                    }
 
 logger = logging.getLogger(__name__)
 
@@ -290,11 +322,12 @@ logger.debug("_fp_dictionary: {}".format(pp.pformat(_fp_dictionary)))
 
 if __name__ == "__main__":
     logging.basicConfig()
-    root_logger=logging.getLogger()
+    root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)
 
     import sys
-    if len(sys.argv)!=4:
+
+    if len(sys.argv) != 4:
         print("Usage: python {} data-folder dbname smiles-file ".format(sys.argv[0]))
         sys.exit(1)
     set_data_folder(sys.argv[1])
@@ -307,5 +340,5 @@ if __name__ == "__main__":
     db_name = sys.argv[2]
     filename = sys.argv[3]
 
-    for fp_name,fp_par in zip(fp_names,fp_pars):
+    for fp_name, fp_par in zip(fp_names, fp_pars):
         stats = get_feature_statistics(db_name, fp_name, fp_par, filename)

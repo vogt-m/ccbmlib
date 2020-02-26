@@ -23,7 +23,9 @@ from rdkit.Chem import SaltRemover
 from rdkit.Chem import AllChem
 
 import logging
+
 logger = logging.getLogger(__name__)
+
 
 def wash(mol, remove_stereo=False):
     """
@@ -197,11 +199,13 @@ def export_washed(washed, smiles_file, duplicates_file):
 if __name__ == "__main__":
     import sys
     import os
+
     logging.basicConfig()
-    root_logger=logging.getLogger()
+    root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)
     if len(sys.argv) != 4:
-        print("Usage: python {} smiles-input-file washed-smiles-output-file duplicates-text-output-file".format(sys.argv[0]))
+        print("Usage: python {} smiles-input-file washed-smiles-output-file duplicates-text-output-file".format(
+            sys.argv[0]))
         sys.exit(1)
     input_file = sys.argv[1]
     washed_file = sys.argv[2]
