@@ -140,10 +140,6 @@ def get_stats_filename(db, fp, pars, limit):
         count = count - 1 if count else -1
     return fname
 
-    return "{db}-{fp}-{par_hash}.stats-{limit}.pickle".format(db=db, fp=fp, par_hash=hash_parameter_set(pars),
-                                                              limit=limit)
-
-
 def get_fp_dictionary_key(db, fp, pars):
     par_key = frozenset(pars.items())
     return frozenset([("db", db), ("fp", fp), ("pars", par_key)])
