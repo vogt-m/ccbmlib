@@ -18,12 +18,20 @@
 
 from setuptools import setup
 
+import re
+version = ""
+with open("ccbmlib/__init__.py") as fin:
+    for line in fin:
+        version_match = re.search(r"^__version__ *= *['\"]([^'\"]*)['\"]",line)
+        if version_match:
+            version = version_match.group(1)
+
 with open("README.md") as f:
     long_description = f.read()
 
 setup(
     name='ccbmlib',
-    version='1.0',
+    version=version,
     packages=['ccbmlib'],
     url='',
     license='MIT License',

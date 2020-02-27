@@ -19,6 +19,7 @@
 import rdkit.Chem as Chem
 import os.path
 import pickle
+import sqlite3
 from zlib import adler32
 import logging
 import pprint
@@ -39,6 +40,10 @@ from rdkit.DataStructs.cDataStructs import ExplicitBitVect, UIntSparseIntVect, I
 
 from ccbmlib.statistics import PairwiseStats
 
+sqlite3.register_adapter(list, pickle.dumps)
+sqlite3.register_adapter(set, pickle.dumps)
+sqlite3.register_adapter(frozenset, pickle.dumps)
+sqlite3.register_converter("pickle", pickle.loads)
 
 # known_fps = {"RDKFingerprint":rdk}
 
@@ -118,28 +123,50 @@ def get_full_filename(filename):
 
 
 def get_fp_filename(db, fp, pars):
-    exists = True
-    count = ""
-    while exists:
-        fname = "{db}-{fp}-{par_hash}{suffix}.fp.txt".format(db=db, fp=fp, par_hash=hash_parameter_set(pars),
-                                                             suffix=count)
-        exists = os.path.exists(get_full_filename(fname))
-        count = count - 1 if count else -1
-    return fname
-
+    with _conn:
+        c = _conn.cursor()
+        par_key = frozenset(pars)
+        c.execute('''SELECT filename from fp_files WHERE db=? AND fp=? AND pars=?''', (db,fp,par_key))
+        result = c.fetchone()
+        if result:
+            return result[0]
+        else:
+            c.execute('''SELECT filename from fp_files''')
+            claimed_files = set(r[0] for r in c)
+            exists = True
+            count = ""
+            while exists:
+                fname = "{db}-{fp}-{par_hash}{suffix}.fp.txt".format(db=db, fp=fp, par_hash=hash_parameter_set(pars),
+                                                                     suffix=count)
+                exists = os.path.exists(get_full_filename(fname)) or fname in claimed_files
+                count = count - 1 if count else -1
+            c.execute('''INSERT INTO fp_files VALUES (?,?,?,?)''',(db,fp,par_key,fname))
+            return fname
 
 def get_stats_filename(db, fp, pars, limit):
-    exists = True
-    count = ""
-    while exists:
-        fname = "{db}-{fp}-{par_hash}{suffix}.stats-{limit}.pickle".format(db=db, fp=fp,
-                                                                           par_hash=hash_parameter_set(pars),
-                                                                           suffix=count,
-                                                                           limit=limit)
-        exists = os.path.exists(get_full_filename(fname))
-        count = count - 1 if count else -1
-    return fname
+    with _conn:
+        c = _conn.cursor()
+        par_key = frozenset(pars)
+        c.execute('''SELECT filename from stat_files WHERE db=? AND fp=? AND pars=? AND ft_limit=?''', (db,fp,par_key,limit))
+        result = c.fetchone()
+        if result:
+            return result[0]
+        else:
+            c.execute('''SELECT filename from stat_files''')
+            claimed_files = set(r[0] for r in c)
+            exists = True
+            count = ""
+            while exists:
+                fname = "{db}-{fp}-{par_hash}{suffix}.stats-{limit}.pickle".format(db=db, fp=fp,
+                                                                                   par_hash=hash_parameter_set(pars),
+                                                                                   suffix=count,
+                                                                                   limit=limit)
+                exists = os.path.exists(get_full_filename(fname)) or fname in claimed_files
+                count = count - 1 if count else -1
+            c.execute('''INSERT INTO stat_files VALUES (?,?,?,?,?)''',(db,fp,par_key,limit,fname))
+            return fname
 
+"""
 def get_fp_dictionary_key(db, fp, pars):
     par_key = frozenset(pars.items())
     return frozenset([("db", db), ("fp", fp), ("pars", par_key)])
@@ -149,7 +176,7 @@ def pickle_fp_dictionary():
     global _fp_dictionary
     with open(_fp_dictionary_pickle, "wb") as pf:
         pickle.dump(_fp_dictionary, pf, pickle.HIGHEST_PROTOCOL)
-
+"""
 
 def to_key_val_string(pars):
     return " ".join("{}:{}".format(k, v) for k, v in sorted(pars.items()))
@@ -159,15 +186,10 @@ def get_fingerprints(db_name, fp_name, pars, get_mol_suppl=None):
     if not _initialized:
         raise Exception("Data folder not set. Use 'set_data_folder(path)'.")
     logger.info("get_fingerprints: db:{} fp_name:{}".format(db_name, fp_name))
-    fp_key = get_fp_dictionary_key(db_name, fp_name, pars)
-    if fp_key not in _fp_dictionary:
-        _fp_dictionary[fp_key] = {}
-    fp_dict = _fp_dictionary[fp_key]
-    if "fp_file" in fp_dict and os.path.exists(get_full_filename(fp_dict["fp_file"])):
-        logger.info("get_fingerprints: fp file found: {}".format(fp_dict["fp_file"]))
-        fp_filename = fp_dict["fp_file"]
+    fp_filename = get_fp_filename(db_name,fp_name,pars)
+    if os.path.exists(get_full_filename(fp_filename)):
+        return fp_filename
     else:
-        fp_filename = get_fp_filename(db_name, fp_name, pars)
         logger.info("get_fingerprints: Calculating fps")
         # calculate fingerprints
         with auto_open(get_full_filename(fp_filename), "wt") as of:
@@ -192,8 +214,6 @@ def get_fingerprints(db_name, fp_name, pars, get_mol_suppl=None):
             logger.warning(
                 "get_fingerprints: Molecules could not be generated for {} entries for db {}".format(bad_count,
                                                                                                      db_name))
-        fp_dict["fp_file"] = fp_filename
-        pickle_fp_dictionary()
     return fp_filename
 
 
@@ -225,14 +245,10 @@ def get_feature_statistics(db_name, fp_name, pars={}, get_mol_suppl=None, limit=
     if not _initialized:
         raise Exception("Data folder not set. Use 'set_data_folder(path)'.")
     logger.info("get_pairwise_stats: db:{} fp_name:{} limit:{}".format(db_name, fp_name, limit))
-    fp_key = get_fp_dictionary_key(db_name, fp_name, pars)
-    if fp_key not in _fp_dictionary:
-        _fp_dictionary[fp_key] = {}
-    fp_dict = _fp_dictionary[fp_key]
-    stat_key = "pairwise-{}".format(limit)
-    if stat_key in fp_dict and os.path.exists(get_full_filename(fp_dict[stat_key])):
-        logger.info("get_pairwise_stats: unpickle stats from '{}'".format(fp_dict[stat_key]))
-        with auto_open(get_full_filename(fp_dict[stat_key]), "rb") as pf:
+    stats_filename = get_stats_filename(db_name, fp_name, pars,limit)
+    if os.path.exists(get_full_filename(stats_filename)):
+        logger.info("get_pairwise_stats: unpickle stats from '{}'".format(stats_filename))
+        with auto_open(get_full_filename(stats_filename), "rb") as pf:
             return PairwiseStats.unpickle(pf)
     else:
         if isinstance(get_mol_suppl, str):
@@ -241,31 +257,50 @@ def get_feature_statistics(db_name, fp_name, pars={}, get_mol_suppl=None, limit=
         get_fp_suppl = cb_fp_iterator_from_file(get_full_filename(fp_filename))
         logger.info("get_pairwise_stats: Calculating pairwise stats")
         pw_stats = PairwiseStats.from_fingerprints(get_fp_suppl, limit=limit)
-        pw_stat_filename = get_stats_filename(db_name, fp_name, pars, limit)
-        logger.info("get_pairwise_stats: pickling stats to '{}'".format(pw_stat_filename))
-        with auto_open(get_full_filename(pw_stat_filename), "wb") as pf:
+        logger.info("get_pairwise_stats: pickling stats to '{}'".format(stats_filename))
+        with auto_open(get_full_filename(stats_filename), "wb") as pf:
             pw_stats.pickle(pf)
-        fp_dict[stat_key] = pw_stat_filename
-        pickle_fp_dictionary()
         return pw_stats
 
 
 def set_data_folder(path):
     global _base_folder
-    global _fp_dictionary_pickle
-    global _fp_dictionary
+    global _conn
     global _initialized
     _base_folder = path
-    _fp_dictionary_pickle = os.path.join(_base_folder, "fp_dictionary.pickle")
-    _fp_dictionary = {}
-    if os.path.exists(_fp_dictionary_pickle):
-        with open(_fp_dictionary_pickle, "rb") as pf:
-            _fp_dictionary = pickle \
-                .load(pf)
-    else:
-        pickle_fp_dictionary()
+    _fp_db = os.path.join(_base_folder, "model_files.db")
+    _conn = sqlite3.connect(_fp_db, detect_types=sqlite3.PARSE_DECLTYPES,isolation_level="EXCLUSIVE")
+    with _conn:
+        c = _conn.cursor()
+        c.execute('''SELECT count(name) FROM sqlite_master WHERE type='table' ''')
+        if c.fetchone()[0] == 0:
+            # Create tables
+            c.execute('''CREATE TABLE fp_files (db text, fp text, pars pickle, filename text)''')
+            c.execute('''CREATE TABLE stat_files (db text, fp text, pars pickle, ft_limit integer, filename text)''')
+            fp_dictionary_pickle = os.path.join(_base_folder, "fp_dictionary.pickle")
+            if os.path.exists(fp_dictionary_pickle):
+                with open(fp_dictionary_pickle, "rb") as pf:
+                    fp_dictionary = pickle.load(pf)
+                for k, v in fp_dictionary.items():
+                    kd = dict(k)
+                    for ft, fn in v.items():
+                        if ft == "fp_file":
+                            c.execute("INSERT INTO fp_files VALUES (?,?,?,?)", (kd['db'], kd['fp'], kd['pars'], fn))
+                        if ft.startswith("pairwise-"):
+                            limit = int(ft[9:])
+                            c.execute("INSERT INTO stat_files VALUES (?,?,?,?,?)", (kd['db'], kd['fp'], kd['pars'], limit, fn))
     _initialized = True
 
+def show_tables():
+    c = _conn.cursor()
+    c.execute('''SELECT db, fp, pars, filename FROM fp_files''')
+    rows = c.fetchall()
+    for entry in rows:
+        print(entry)
+    c.execute('''SELECT db, fp, pars, ft_limit, filename FROM stat_files''')
+    rows = c.fetchall()
+    for entry in rows:
+        print(entry)
 
 fingerprints = {"rdkit": rdkit_fingerprint,
                 "maccs": maccs_keys,
@@ -309,12 +344,9 @@ logger = logging.getLogger(__name__)
 
 pp = pprint.PrettyPrinter(indent=4, depth=6)
 
+_conn = None
 _base_folder = None
-_fp_dictionary_pickle = None
-_fp_dictionary = None
 _initialized = False
-
-logger.debug("_fp_dictionary: {}".format(pp.pformat(_fp_dictionary)))
 
 if __name__ == "__main__":
     logging.basicConfig()
