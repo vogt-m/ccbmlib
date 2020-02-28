@@ -191,7 +191,7 @@ class PairwiseStats:
             return self.marginal.var(i)
 
     def get_cached_tc_distribution(self, fp=None):
-        key = frozenset(fp)
+        key = frozenset(fp) if fp else None
         return self._get_cached_tc_distribution(key)
 
     @lru_cache(1024)
@@ -400,3 +400,26 @@ class CorrelatedNormalDistributions:
         :return: cumulative distribution function at t
         """
         return norm.cdf(p.cdf_arg(t))
+
+    def icdf(p, s):
+        tl = -5
+        th = 5
+        sl = p.cdf(tl)
+        sh = p.cdf(th)
+        if s <= sl:
+            return tl
+        if s >= sh:
+            return th
+        while th - tl > 1e-6:
+            tm = (th+tl)/2
+            sm = p.cdf(tm)
+            if sm < s:
+                tl = tm
+                sl = sm
+            elif sm > s:
+                th = tm
+                sh = sm
+            else:
+                return tm
+        alpha = (s-sl)/(sh-sl)
+        return (1-alpha)*tl + alpha*th

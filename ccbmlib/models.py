@@ -22,9 +22,8 @@ import pickle
 import sqlite3
 from zlib import adler32
 import logging
-import pprint
 import gzip
-import sys
+
 
 from rdkit.Chem.rdMolDescriptors import GetMACCSKeysFingerprint
 from rdkit.Chem.rdMolDescriptors import GetAtomPairFingerprint
@@ -36,16 +35,12 @@ from rdkit.Chem.rdMolDescriptors import GetHashedMorganFingerprint
 from rdkit.Avalon.pyAvalonTools import GetAvalonFP
 from rdkit.Chem import RDKFingerprint
 
-from rdkit.DataStructs.cDataStructs import ExplicitBitVect, UIntSparseIntVect, IntSparseIntVect, LongSparseIntVect
-
 from ccbmlib.statistics import PairwiseStats
 
 sqlite3.register_adapter(list, pickle.dumps)
 sqlite3.register_adapter(set, pickle.dumps)
 sqlite3.register_adapter(frozenset, pickle.dumps)
 sqlite3.register_converter("pickle", pickle.loads)
-
-# known_fps = {"RDKFingerprint":rdk}
 
 # Functions for calculating different fingerprints
 # All fingerprints are returned as lists of features
@@ -125,7 +120,7 @@ def get_full_filename(filename):
 def get_fp_filename(db, fp, pars):
     with _conn:
         c = _conn.cursor()
-        par_key = frozenset(pars)
+        par_key = frozenset(pars.items())
         c.execute('''SELECT filename from fp_files WHERE db=? AND fp=? AND pars=?''', (db,fp,par_key))
         result = c.fetchone()
         if result:
@@ -146,7 +141,7 @@ def get_fp_filename(db, fp, pars):
 def get_stats_filename(db, fp, pars, limit):
     with _conn:
         c = _conn.cursor()
-        par_key = frozenset(pars)
+        par_key = frozenset(pars.items())
         c.execute('''SELECT filename from stat_files WHERE db=? AND fp=? AND pars=? AND ft_limit=?''', (db,fp,par_key,limit))
         result = c.fetchone()
         if result:
@@ -165,18 +160,6 @@ def get_stats_filename(db, fp, pars, limit):
                 count = count - 1 if count else -1
             c.execute('''INSERT INTO stat_files VALUES (?,?,?,?,?)''',(db,fp,par_key,limit,fname))
             return fname
-
-"""
-def get_fp_dictionary_key(db, fp, pars):
-    par_key = frozenset(pars.items())
-    return frozenset([("db", db), ("fp", fp), ("pars", par_key)])
-
-
-def pickle_fp_dictionary():
-    global _fp_dictionary
-    with open(_fp_dictionary_pickle, "wb") as pf:
-        pickle.dump(_fp_dictionary, pf, pickle.HIGHEST_PROTOCOL)
-"""
 
 def to_key_val_string(pars):
     return " ".join("{}:{}".format(k, v) for k, v in sorted(pars.items()))
@@ -228,7 +211,6 @@ def cb_mol_suppl_from_file(filename, smilesColumn=0, nameColumn=1, titleLine=Fal
 
 def cb_fp_iterator_from_file(filename):
     def generator():
-
         with auto_open(filename) as inf:
             for line in inf:
                 if line.startswith("#"):
@@ -281,6 +263,7 @@ def set_data_folder(path):
             if os.path.exists(fp_dictionary_pickle):
                 with open(fp_dictionary_pickle, "rb") as pf:
                     fp_dictionary = pickle.load(pf)
+                logger.debug(fp_dictionary)
                 for k, v in fp_dictionary.items():
                     kd = dict(k)
                     for ft, fn in v.items():
@@ -289,18 +272,21 @@ def set_data_folder(path):
                         if ft.startswith("pairwise-"):
                             limit = int(ft[9:])
                             c.execute("INSERT INTO stat_files VALUES (?,?,?,?,?)", (kd['db'], kd['fp'], kd['pars'], limit, fn))
+    show_tables(logger.debug)
     _initialized = True
 
-def show_tables():
+def show_tables(printer=print):
     c = _conn.cursor()
     c.execute('''SELECT db, fp, pars, filename FROM fp_files''')
     rows = c.fetchall()
+    printer("Table fp_files (Fingerprint files)")
     for entry in rows:
-        print(entry)
+        printer(entry)
     c.execute('''SELECT db, fp, pars, ft_limit, filename FROM stat_files''')
     rows = c.fetchall()
+    printer("Table stat_files (Statistics files)")
     for entry in rows:
-        print(entry)
+        printer(entry)
 
 fingerprints = {"rdkit": rdkit_fingerprint,
                 "maccs": maccs_keys,
@@ -314,35 +300,7 @@ fingerprints = {"rdkit": rdkit_fingerprint,
                 }
 
 
-def _maccs_keys_wrapper(mol, **kwargs):
-    return GetMACCSKeysFingerprint(mol)
-
-
-fingerprints_future = {"rdkit": RDKFingerprint,
-                       "maccs": _maccs_keys_wrapper,
-                       "atom_pairs": GetAtomPairFingerprint,
-                       "torsions": GetTopologicalTorsionFingerprint,
-                       "morgan": GetMorganFingerprint,
-                       "hashed_atom_pairs": GetHashedAtomPairFingerprint,
-                       "hashed_torsions": GetHashedTopologicalTorsionFingerprint,
-                       "hashed_morgan": GetHashedMorganFingerprint,
-                       "avalon": GetAvalonFP,
-                       }
-
-fingerprint_type = {"rdkit": ExplicitBitVect,
-                    "maccs": ExplicitBitVect,
-                    "atom_pairs": IntSparseIntVect,
-                    "torsions": LongSparseIntVect,
-                    "morgan": UIntSparseIntVect,
-                    "hashed_atom_pairs": IntSparseIntVect,
-                    "hashed_torsions": LongSparseIntVect,
-                    "hashed_morgan": UIntSparseIntVect,
-                    "avalon": ExplicitBitVect,
-                    }
-
 logger = logging.getLogger(__name__)
-
-pp = pprint.PrettyPrinter(indent=4, depth=6)
 
 _conn = None
 _base_folder = None
