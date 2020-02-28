@@ -129,4 +129,9 @@ For the theoretical background see the following references;
 - Vogt M & Bajorath J.
   Modeling Tanimoto similarity value distributions and predicting search results.
   Mol Inf 36, 1600131, 2017.  https://doi.org/10.1002/minf.201600131
+- Vogt M & Bajorath J.
+  ccbmlib – a Python package for modeling Tanimoto similarity value distributions.
+  F1000Research 9(Chem Inf Sci), e100, 2020. https://doi.org/10.12688/f1000research.22292.1
+  
+  
 
